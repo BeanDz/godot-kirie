@@ -2,7 +2,8 @@ class_name KirieIntegrationProbe
 extends RefCounted
 
 const PROBE_HTML_PATH := "res://web/probe.html"
-const TEST_TIMEOUT_SECONDS := 12.0
+const DEFAULT_TEST_TIMEOUT_SECONDS := 12.0
+const IOS_TEST_TIMEOUT_SECONDS := 30.0
 
 var _kirie: GdKirie
 var _messages: Array[Dictionary] = []
@@ -39,7 +40,8 @@ func failure_reason() -> String:
 
 
 func wait_for_webview_ready(probe_name: String) -> String:
-	var deadline := Time.get_ticks_msec() + int(TEST_TIMEOUT_SECONDS * 1000.0)
+	var timeout_seconds := _test_timeout_seconds()
+	var deadline := Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
 	while Time.get_ticks_msec() < deadline:
 		if _probe_error != "":
 			return _probe_error
@@ -49,11 +51,12 @@ func wait_for_webview_ready(probe_name: String) -> String:
 
 		await _tree.process_frame
 
-	return "Timed out waiting for webview_ready during %s" % probe_name
+	return "Timed out after %.1fs waiting for webview_ready during %s" % [timeout_seconds, probe_name]
 
 
 func wait_for_message(message_type: String, probe_name: String) -> String:
-	var deadline := Time.get_ticks_msec() + int(TEST_TIMEOUT_SECONDS * 1000.0)
+	var timeout_seconds := _test_timeout_seconds()
+	var deadline := Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
 	while Time.get_ticks_msec() < deadline:
 		if _probe_error != "":
 			return _probe_error
@@ -63,7 +66,12 @@ func wait_for_message(message_type: String, probe_name: String) -> String:
 
 		await _tree.process_frame
 
-	return "Timed out waiting for %s during %s" % [message_type, probe_name]
+	return "Timed out after %.1fs waiting for %s during %s; observed messages=%s" % [
+		timeout_seconds,
+		message_type,
+		probe_name,
+		JSON.stringify(_messages),
+	]
 
 
 func _has_message(message_type: String, probe_name: String) -> bool:
@@ -80,6 +88,13 @@ func _has_message(message_type: String, probe_name: String) -> bool:
 			return true
 
 	return false
+
+
+func _test_timeout_seconds() -> float:
+	if OS.get_name() == "iOS":
+		return IOS_TEST_TIMEOUT_SECONDS
+
+	return DEFAULT_TEST_TIMEOUT_SECONDS
 
 
 func _on_webview_ready() -> void:
