@@ -18,6 +18,9 @@ jobs:
     name: iOS
     runs-on: macos-latest
     env:
+      GODOT_VERSION: 4.6.2
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
       MISE_EXEC_AUTO_INSTALL: "false"
       MISE_NOT_FOUND_AUTO_INSTALL: "false"
 
@@ -35,7 +38,7 @@ jobs:
       - name: Setup Godot
         uses: chickensoft-games/setup-godot@v2
         with:
-          version: 4.6.2
+          version: ${{ env.GODOT_VERSION }}
           use-dotnet: true
           include-templates: true
 
@@ -44,14 +47,21 @@ jobs:
         with:
           xcode-version: latest-stable
 
-      - name: Install XcodeGen, Task, SCons and MoltenVK
-        run: brew install xcodegen task scons molten-vk
+      - name: Get Xcode version
+        id: xcode
+        run: |
+          xcodebuild -version
+          echo "version=$(xcodebuild -version | tr ' \n' '--')" >> "$GITHUB_OUTPUT"
+
+      - name: Install XcodeGen, SCons and MoltenVK
+        run: brew install xcodegen scons molten-vk
 
       - name: Download and Prepare Godot Source Headers
         run: |
-          curl -LO https://github.com/godotengine/godot/archive/refs/tags/4.6.2-stable.tar.gz
-          tar -xzf 4.6.2-stable.tar.gz
-          mv godot-4.6.2-stable godot
+          rm -rf godot "${GODOT_VERSION}-stable.tar.gz" "godot-${GODOT_VERSION}-stable"
+          curl -LO "https://github.com/godotengine/godot/archive/refs/tags/${GODOT_VERSION}-stable.tar.gz"
+          tar -xzf "${GODOT_VERSION}-stable.tar.gz"
+          mv "godot-${GODOT_VERSION}-stable" godot
 
           cd godot
 
@@ -62,6 +72,12 @@ jobs:
             vulkan_sdk_path="${MOLTENVK_PATH}" \
             core/version_generated.gen.h \
             core/extension/gdextension_interface.gen.h
+
+      - name: Cache Godot iOS simulator template
+        uses: actions/cache@v5
+        with:
+          path: godot/bin/libgodot.ios.template_debug.arm64.simulator.a
+          key: ${{ runner.os }}-${{ runner.arch }}-godot-${{ env.GODOT_VERSION }}-${{ steps.xcode.outputs.version }}-ios-simulator-template-${{ hashFiles('gulpfile.ts') }}
 
       - name: Enable Corepack
         run: mise x -- corepack enable pnpm
@@ -97,6 +113,9 @@ jobs:
           echo "SIMULATOR_ID=$DEVICE_ID" >> $GITHUB_ENV
 
       - name: Run integration tests
+        timeout-minutes: 8
+        env:
+          TIMEOUT_SECONDS: "45"
         run: |
           xcrun simctl install $SIMULATOR_ID dist/integration/ios_debug.app
 
