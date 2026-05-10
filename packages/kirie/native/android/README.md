@@ -25,6 +25,11 @@ request handler. `res://web` resolves to `web/index.html`. Runtime-mounted Godot
 packs are not part of this path. `http://`, `https://`, and `file://` URLs keep
 the default Android WebView loading behavior.
 
+Runtime configuration is injected by the addon export plugin as Android
+application manifest metadata. WebView inspection and invalid TLS certificate
+bypass are controlled by Godot export preset options instead of being tied to the
+native AAR build configuration.
+
 Notes:
 
 - The current skeleton was adapted from the official Godot Android v2 plugin
@@ -32,6 +37,9 @@ Notes:
 - Local AAR export follows Godot's Android plugin v2 and `EditorExportPlugin`
   hooks; see `docs/references.md` for the official Godot references.
 - Build staged AARs with `mise x -- corepack pnpm run build:android-aar`.
+- Exported projects use the release AAR by default. Local Kirie development can
+  select the debug AAR for Android native debugging by passing
+  `-- --kirie-android-aar=debug` to the Godot export command.
 - Demo packaging from the upstream template was intentionally removed because
   this repository keeps Godot-facing addon files under
   `packages/kirie/addon/addons/kirie/`.
