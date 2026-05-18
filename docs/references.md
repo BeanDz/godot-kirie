@@ -35,6 +35,11 @@ packaging, or platform WebView bridge details.
 - [C#/.NET (stable)](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/index.html)
   Reference for Godot C# platform support, including Android and iOS export
   limitations.
+- [Variant class (stable)](https://docs.godotengine.org/en/stable/classes/class_variant.html)
+  Reference for Godot's cross-language dynamic value model.
+- [C# Variant (stable)](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/c_sharp_variant.html)
+  Reference for `Godot.Variant`, `Variant.Type`, and C# Variant-compatible
+  types.
 - [C# signals (stable)](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/c_sharp_signals.html)
   Reference for idiomatic C# event usage when working with Godot signals.
 - [Signal class (stable)](https://docs.godotengine.org/en/stable/classes/class_signal.html)
@@ -122,6 +127,9 @@ packaging, or platform WebView bridge details.
   Reference for exported Gulp task functions and task composition.
 - [Execa](https://github.com/sindresorhus/execa)
   Reference for programmatic process execution from the repository task runner.
+- [Vite build guide](https://vite.dev/guide/build)
+  Reference for production HTML builds used by the platform integration web
+  fixture.
 - [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
   Reference for publishing npm packages from GitHub Actions through OIDC instead
   of long-lived npm tokens.
@@ -153,3 +161,5 @@ packaging, or platform WebView bridge details.
   GitHub Actions OIDC, bumpp, and pnpm publish behavior.
 - When changing native artifact orchestration, start with Node.js TypeScript
   support and the Gulp task composition references.
+- When changing the platform integration web fixture, start with the Vite build
+  guide and `@gd-kirie/ipc`.

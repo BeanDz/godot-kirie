@@ -152,6 +152,50 @@ Godot objects, nodes, callables, RIDs, symbols, functions, custom classes,
 cycles, dates, regular expressions, and other engine-local or JavaScript-local
 values are out of scope for the data lane.
 
+### Data lane type mapping
+
+The data lane keeps one semantic subset across the browser, Godot wrappers, and
+Android native code, but each layer uses its own host-language representation:
+
+| Data lane value | TypeScript `@gd-kirie/ipc` | Godot GDScript | Godot C# | Android Kotlin after bridge |
+| --- | --- | --- | --- | --- |
+| null | `null` | `null` / `TYPE_NIL` | `Variant.Type.Nil` | `null` |
+| boolean | `boolean` | `bool` / `TYPE_BOOL` | `Variant.Type.Bool` | `Boolean` |
+| integer | `number` | `int` / `TYPE_INT` | `Variant.Type.Int` | `Long` |
+| float | `number` | `float` / `TYPE_FLOAT` | `Variant.Type.Float` | `Double` |
+| string | `string` | `String` / `TYPE_STRING` | `Variant.Type.String` | `String` |
+| array | `KirieData[]` | `Array` / `TYPE_ARRAY` | `Variant.Type.Array` | `Array<*>` |
+| map/object | `{ [key: string]: KirieData }` | `Dictionary` / `TYPE_DICTIONARY` | `Variant.Type.Dictionary` | `Dictionary` |
+
+The public Godot API stays Variant-shaped: GDScript exposes
+`send_data(value: Variant)`, and C# exposes `SendData(Variant value)`. Android
+does not expose a single Kotlin `Any?` entrypoint for all data lane values,
+because Godot's Android plugin bridge registers JVM parameter types for
+conversion. A Kotlin `Any?` parameter becomes `java.lang.Object`; Godot treats
+that as a Java object parameter, not as a general Variant parameter. A Kotlin
+`Array<Any?>` parameter becomes JVM `Object[]`; Godot treats that as a typed
+JavaObject array, not as a heterogeneous Godot `Array`.
+
+The Godot wrappers therefore validate the root `Variant` kind, place the value
+under a private `Dictionary` key, and call one Android `sendData(Dictionary)`
+method. The Android plugin unwraps that key immediately before CBOR encoding.
+The `Dictionary` exists only at the Godot Android bridge boundary; it is not the
+data lane protocol shape, and it does not force CBOR values to be map roots.
+Root `null`, scalar, array, and map values are still encoded as their original
+CBOR data item.
+
+The relevant Godot 4.6.2 stable sources are
+[`GodotPlugin.java`](https://github.com/godotengine/godot/blob/001aa128b1cd80dc4e47e823c360bccf45ed6bad/platform/android/java/lib/src/main/java/org/godotengine/godot/plugin/GodotPlugin.java#L153-L161)
+method registration,
+[`godot_plugin_jni.cpp`](https://github.com/godotengine/godot/blob/001aa128b1cd80dc4e47e823c360bccf45ed6bad/platform/android/plugin/godot_plugin_jni.cpp#L72-L88)
+native method registration,
+[`java_class_wrapper.cpp`](https://github.com/godotengine/godot/blob/001aa128b1cd80dc4e47e823c360bccf45ed6bad/platform/android/java_class_wrapper.cpp#L118-L128)
+Java object argument validation,
+[`java_class_wrapper.cpp`](https://github.com/godotengine/godot/blob/001aa128b1cd80dc4e47e823c360bccf45ed6bad/platform/android/java_class_wrapper.cpp#L224-L247)
+array argument validation, and
+[`jni_utils.cpp`](https://github.com/godotengine/godot/blob/001aa128b1cd80dc4e47e823c360bccf45ed6bad/platform/android/jni_utils.cpp#L199-L211)
+Variant container conversion.
+
 The browser-side `@gd-kirie/ipc` package uses `cborg` for CBOR. Android native
 code uses Jackson CBOR because it provides a dynamic `JsonNode` tree for the
 data lane; Kotlinx Serialization CBOR is schema-first and is not used for the

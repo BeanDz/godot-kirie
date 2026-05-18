@@ -69,13 +69,22 @@ class KirieAndroidPlugin(
         webViewManager.sendBinaryPacket(cborMapper.writeValueAsBytes(bytes))
     }
 
+    // Godot's Android bridge converts by registered JVM parameter type and does
+    // not expose a Kotlin-side Variant parameter. Dictionary is the supported
+    // container parameter for this boundary; Kirie unwraps the private value key
+    // immediately so the encoded CBOR item remains the caller's original root
+    // value.
     @UsedByGodot
-    fun sendData(value: Any?) {
-        webViewManager.sendDataPacket(cborMapper.writeValueAsBytes(value.toJsonNode()))
+    fun sendData(value: Dictionary) {
+        sendDataValue(value[DATA_VALUE_KEY])
     }
 
     @UsedByGodot
     fun getLaunchOption(key: String): String = activity?.intent?.getStringExtra(key).orEmpty()
+
+    private fun sendDataValue(value: Any?) {
+        webViewManager.sendDataPacket(cborMapper.writeValueAsBytes(value.toJsonNode()))
+    }
 
     private fun handleWebViewReady() {
         emitSignal(SIGNAL_WEBVIEW_READY)
@@ -106,6 +115,7 @@ class KirieAndroidPlugin(
         private val SIGNAL_BINARY_RECEIVED = SignalInfo("binary_received", ByteArray::class.java)
         private val SIGNAL_DATA_RECEIVED = SignalInfo("data_received", Any::class.java)
         private val SIGNAL_IPC_ERROR = SignalInfo("ipc_error", String::class.java)
+        private const val DATA_VALUE_KEY = "value"
     }
 }
 

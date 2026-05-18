@@ -79,7 +79,25 @@ func send_data(value: Variant) -> void:
 		return
 
 	print("[Kirie][gd] send_data %s" % str(value))
-	_plugin_singleton.sendData(value)
+	# Android plugin methods are registered by concrete JVM parameter type.
+	# Godot does not expose a Kotlin-side Variant parameter type, and JVM Object
+	# parameters do not reliably carry Variant containers. Use Godot's supported
+	# Dictionary conversion path as a private carrier, then unwrap on Android
+	# before CBOR encoding.
+	var value_type := typeof(value)
+	if value_type not in [
+		TYPE_NIL,
+		TYPE_BOOL,
+		TYPE_INT,
+		TYPE_FLOAT,
+		TYPE_STRING,
+		TYPE_ARRAY,
+		TYPE_DICTIONARY,
+	]:
+		push_error("Unsupported Kirie data type: %s" % type_string(value_type))
+		return
+
+	_plugin_singleton.sendData({"value": value})
 
 
 func get_launch_option(key: String) -> String:

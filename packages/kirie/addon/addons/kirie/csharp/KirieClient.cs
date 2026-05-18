@@ -116,7 +116,32 @@ public partial class KirieClient : GodotObject
         }
 
         GD.Print($"[Kirie][cs] send_data {value}");
-        _pluginSingleton!.Call("sendData", value);
+        // Android plugin methods are registered by concrete JVM parameter type.
+        // Godot does not expose a Kotlin-side Variant parameter type, and JVM Object
+        // parameters do not reliably carry Variant containers. Use Godot's supported
+        // Dictionary conversion path as a private carrier, then unwrap on Android
+        // before CBOR encoding.
+        switch (value.VariantType)
+        {
+            case Variant.Type.Nil:
+            case Variant.Type.Bool:
+            case Variant.Type.Int:
+            case Variant.Type.Float:
+            case Variant.Type.String:
+            case Variant.Type.Array:
+            case Variant.Type.Dictionary:
+                break;
+            default:
+                GD.PushError($"Unsupported Kirie data type: {value.VariantType}");
+                return;
+        }
+
+        _pluginSingleton!.Call(
+            "sendData",
+            new Godot.Collections.Dictionary
+            {
+                ["value"] = value,
+            });
     }
 
     public string GetLaunchOption(string key)
