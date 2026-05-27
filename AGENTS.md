@@ -239,6 +239,10 @@ configured yet.
 - Do not add extra guard code only to beautify errors. Prefer the underlying
   tool, runtime, or filesystem error unless the guard changes behavior or makes
   a likely failure materially easier to debug.
+- Do not add helper functions, quoting layers, duplicate logs, or wrapper
+  messages only to make errors look nicer. When a custom error is required, keep
+  it directly tied to required behavior such as failing invalid configuration,
+  naming the missing input, or printing an exact setup command.
 - Prefer keeping logic close to the module that owns it instead of extracting it
   into cross-cutting helpers too early.
 - Add configuration, extension points, and generic options only when they are
@@ -343,6 +347,9 @@ infrastructure.
   configured.
 - Automated platform integration coverage for the C# `KirieClient` wrapper does
   not exist yet.
+- Automated desktop Godot CEF integration coverage does not exist yet. The next
+  integration-test pass should cover `examples/basic-ipc` desktop run or export
+  with the pinned Godot CEF addon installed.
 - Browser-side Eventa adapter support exists in `@gd-kirie/ipc-eventa`.
 - `GdKirie.EventaAdapter` is a .NET 10-only package. It supports Eventa events
   and unary RPC over Kirie text IPC, keeps Eventa source out of `addons/kirie`,
