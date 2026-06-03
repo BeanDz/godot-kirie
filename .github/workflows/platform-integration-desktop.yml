@@ -1,0 +1,101 @@
+name: Desktop Platform Integration
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+          - ubuntu-latest
+    env:
+      GODOT_VERSION: 4.6.2
+      MISE_EXEC_AUTO_INSTALL: "false"
+      MISE_NOT_FOUND_AUTO_INSTALL: "false"
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+      MISE_WINDOWS_DEFAULT_INLINE_SHELL_ARGS: "bash -c"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Node and Godot
+        if: matrix.os != 'windows-latest'
+        uses: jdx/mise-action@v3
+        with:
+          install: true
+          install_args: node godot
+          cache: true
+
+      - name: Install Node
+        if: matrix.os == 'windows-latest'
+        uses: jdx/mise-action@v3
+        with:
+          install: true
+          install_args: node
+          cache: true
+
+      - name: Setup Godot
+        if: matrix.os == 'windows-latest'
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: true
+
+      - name: Select Windows Godot executable
+        if: matrix.os == 'windows-latest'
+        run: |
+          godot_exe="$HOME/godot/Godot_v${GODOT_VERSION}-stable_mono_win64/Godot_v${GODOT_VERSION}-stable_mono_win64.exe"
+          test -f "$godot_exe"
+          echo "GODOT=$(cygpath -w "$godot_exe")" >> "$GITHUB_ENV"
+
+      - name: Enable Corepack
+        run: mise x -- corepack enable pnpm
+
+      - name: Get pnpm store path
+        id: pnpm-store
+        run: echo "path=$(mise x -- corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-${{ runner.arch }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-pnpm-store-
+
+      - name: Install pnpm dependencies
+        run: mise x -- corepack pnpm install --frozen-lockfile
+
+      - name: Install Godot CEF addon
+        run: mise run install:godot-cef tests/integration
+
+      - name: Build integration web fixture
+        run: mise run build:integration-web
+
+      - name: Run integration tests
+        timeout-minutes: 8
+        run: |
+          mise run test:integration-desktop ipc_round_trip_probe
+          # mise run test:integration-desktop webview_lifecycle_probe
+          mise run test:integration-desktop res_asset_loading_probe

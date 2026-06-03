@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { execa } from "execa";
@@ -9,7 +10,10 @@ interface MarkerResult {
   status: "pass" | "fail" | "timeout" | "stopped";
 }
 
-function resolveTestName(platform: "android" | "ios", testName?: string): string | undefined {
+function resolveTestName(
+  platform: "android" | "ios" | "desktop",
+  testName?: string,
+): string | undefined {
   if (!fs.existsSync(`${integrationProjectDir}/project.godot`)) {
     console.error("This task must be run from the repository root.");
     process.exitCode = 1;
@@ -37,7 +41,7 @@ function readLogFile(logFile: string): string {
 
 function prepareLogFile(testName: string): string {
   const logFile =
-    process.env.LOG_FILE || `${process.env.TMPDIR || "/tmp"}/kirie-integration-${testName}.log`;
+    process.env.LOG_FILE || path.join(os.tmpdir(), `kirie-integration-${testName}.log`);
 
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   fs.writeFileSync(logFile, "");
@@ -59,26 +63,35 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function findMarker(options: { logFile: string; testName: string }): MarkerResult | undefined {
+  const testNamePattern = escapeRegExp(options.testName);
+  const failPattern = new RegExp(`KIRIE_TEST_FAIL (${testNamePattern}|unknown)( |$)`);
+  const passPattern = new RegExp(`KIRIE_TEST_PASS ${testNamePattern}( |$)`);
+  const lines = readLogFile(options.logFile).split(/\r?\n/);
+  const failLine = lines.find((line) => failPattern.test(line));
+  if (failLine) {
+    return { line: failLine, status: "fail" };
+  }
+
+  const passLine = lines.find((line) => passPattern.test(line));
+  if (passLine) {
+    return { line: passLine, status: "pass" };
+  }
+
+  return undefined;
+}
+
 async function waitForMarker(options: {
   logFile: string;
   testName: string;
   timeoutSeconds: number;
 }): Promise<MarkerResult> {
-  const testNamePattern = escapeRegExp(options.testName);
-  const failPattern = new RegExp(`KIRIE_TEST_FAIL (${testNamePattern}|unknown)( |$)`);
-  const passPattern = new RegExp(`KIRIE_TEST_PASS ${testNamePattern}( |$)`);
   const deadline = Date.now() + options.timeoutSeconds * 1000;
 
   while (Date.now() < deadline) {
-    const lines = readLogFile(options.logFile).split(/\r?\n/);
-    const failLine = lines.find((line) => failPattern.test(line));
-    if (failLine) {
-      return { line: failLine, status: "fail" };
-    }
-
-    const passLine = lines.find((line) => passPattern.test(line));
-    if (passLine) {
-      return { line: passLine, status: "pass" };
+    const marker = findMarker(options);
+    if (marker) {
+      return marker;
     }
 
     await sleep(500);
@@ -123,6 +136,38 @@ async function printIosResult(
   if (result.status === "timeout" || result.status === "stopped") {
     console.error(
       `Timed out (or app exited early) waiting for KIRIE_TEST_PASS or KIRIE_TEST_FAIL for ${testName}`,
+    );
+  }
+
+  await sleep(300);
+  console.error(`=== Full log: ${logFile} ===`);
+  console.error(readLogFile(logFile));
+  console.error("=== End of log ===");
+
+  if (result.status === "fail") {
+    console.error(result.line);
+  }
+
+  process.exitCode = 1;
+}
+
+async function printDesktopResult(
+  result: MarkerResult,
+  logFile: string,
+  testName: string,
+): Promise<void> {
+  if (result.status === "pass") {
+    console.log(result.line);
+    return;
+  }
+
+  if (result.status === "stopped") {
+    console.error(result.line);
+  }
+
+  if (result.status === "timeout" || result.status === "stopped") {
+    console.error(
+      `Timed out (or Godot exited early) waiting for KIRIE_TEST_PASS or KIRIE_TEST_FAIL for ${testName}`,
     );
   }
 
@@ -322,5 +367,84 @@ export async function runIntegrationIosTest(testNameArg?: string): Promise<void>
 
   if (result) {
     await printIosResult(result, logFile, testName);
+  }
+}
+
+export async function runIntegrationDesktopTest(testNameArg?: string): Promise<void> {
+  const testName = resolveTestName("desktop", testNameArg);
+  if (!testName) {
+    return;
+  }
+
+  const webIndex = `${integrationProjectDir}/web/index.html`;
+  if (!fs.existsSync(webIndex)) {
+    console.error("Missing integration web fixture. Run: mise run build:integration-web");
+    process.exitCode = 1;
+    return;
+  }
+
+  const timeoutSeconds = Number(process.env.TIMEOUT_SECONDS || "60");
+  const logFile = prepareLogFile(testName);
+  const godotCommand = process.env.GODOT || "godot";
+  const importLogStream = await openLogStream(logFile);
+  let importError: unknown;
+
+  try {
+    await execa(
+      godotCommand,
+      ["--headless", "--editor", "--quit", "--path", integrationProjectDir],
+      {
+        cwd: rootDir,
+        stderr: importLogStream,
+        stdout: importLogStream,
+      },
+    );
+  } catch (error) {
+    importError = error;
+  } finally {
+    importLogStream.end();
+  }
+
+  if (importError) {
+    await sleep(300);
+    console.error(`Godot editor import failed before running ${testName}`);
+    console.error(`=== Full log: ${logFile} ===`);
+    console.error(readLogFile(logFile));
+    console.error("=== End of log ===");
+    throw importError;
+  }
+
+  const runtimeLogStream = await openLogStream(logFile);
+  const godotProcess = execa(
+    godotCommand,
+    ["--headless", "--path", integrationProjectDir, "--", `--kirie-test=${testName}`],
+    { cwd: rootDir, stderr: runtimeLogStream, stdout: runtimeLogStream },
+  );
+  const watchedGodotProcess = godotProcess.then(
+    () => undefined,
+    () => undefined,
+  );
+  let result: MarkerResult | undefined;
+
+  try {
+    result = await Promise.race([
+      waitForMarker({ logFile, testName, timeoutSeconds }),
+      watchedGodotProcess.then(
+        (): MarkerResult => ({
+          ...(findMarker({ logFile, testName }) || {
+            line: `Godot exited before KIRIE_TEST_PASS/FAIL for ${testName}`,
+            status: "stopped",
+          }),
+        }),
+      ),
+    ]);
+  } finally {
+    godotProcess.kill();
+    await watchedGodotProcess;
+    runtimeLogStream.end();
+  }
+
+  if (result) {
+    await printDesktopResult(result, logFile, testName);
   }
 }
