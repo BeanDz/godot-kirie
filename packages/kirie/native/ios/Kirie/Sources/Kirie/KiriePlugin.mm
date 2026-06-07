@@ -191,70 +191,6 @@ static Variant unwrap_carried_data(Variant value) {
 	return dictionary[key];
 }
 
-static bool require_arg_count(Callable::CallError &r_error, int p_argcount, int p_expected) {
-	if (p_argcount == p_expected) {
-		return true;
-	}
-
-	r_error.error = p_argcount < p_expected ? Callable::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS : Callable::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
-	r_error.expected = p_expected;
-	return false;
-}
-
-static void call_callback(const Callable &callback) {
-	if (callback.is_null()) {
-		return;
-	}
-
-	Variant return_value;
-	Callable::CallError call_error;
-	callback.callp(nullptr, 0, return_value, call_error);
-}
-
-static void call_callback(const Callable &callback, const String &value) {
-	if (callback.is_null()) {
-		return;
-	}
-
-	Variant argument = value;
-	const Variant *arguments[] = { &argument };
-	Variant return_value;
-	Callable::CallError call_error;
-	callback.callp(arguments, 1, return_value, call_error);
-}
-
-static void call_callback(const Callable &callback, const PackedByteArray &value) {
-	if (callback.is_null()) {
-		return;
-	}
-
-	Variant argument = value;
-	const Variant *arguments[] = { &argument };
-	Variant return_value;
-	Callable::CallError call_error;
-	callback.callp(arguments, 1, return_value, call_error);
-}
-
-static void call_callback(const Callable &callback, const Variant &value) {
-	if (callback.is_null()) {
-		return;
-	}
-
-	const Variant *arguments[] = { &value };
-	Variant return_value;
-	Callable::CallError call_error;
-	callback.callp(arguments, 1, return_value, call_error);
-}
-
-void KiriePlugin::registerCallbacks(Callable on_webview_ready, Callable on_text_received, Callable on_binary_received, Callable on_data_received, Callable on_ipc_error) {
-	webview_ready_callback = on_webview_ready;
-	ipc_message_received_callback = on_text_received;
-	text_received_callback = on_text_received;
-	binary_received_callback = on_binary_received;
-	data_received_callback = on_data_received;
-	ipc_error_callback = on_ipc_error;
-}
-
 void KiriePlugin::createWebView(String initial_url) {
 	CharString encoded_initial_url = initial_url.utf8();
 	kirie_swift_create_webview(encoded_initial_url.get_data());
@@ -293,7 +229,7 @@ void KiriePlugin::sendData(Variant value) {
 	String error;
 	String json = to_json_string(unwrap_carried_data(value), &error);
 	if (!error.is_empty()) {
-		call_callback(ipc_error_callback, error);
+		emit_signal(StringName("ipc_error"), error);
 		return;
 	}
 
@@ -332,106 +268,21 @@ KiriePlugin *KiriePlugin::get_singleton() {
 }
 
 void KiriePlugin::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("createWebView", "initial_url"), &KiriePlugin::createWebView);
+	ClassDB::bind_method(D_METHOD("destroyWebView"), &KiriePlugin::destroyWebView);
+	ClassDB::bind_method(D_METHOD("loadUrl", "url"), &KiriePlugin::loadUrl);
+	ClassDB::bind_method(D_METHOD("loadHtmlString", "html", "base_url"), &KiriePlugin::loadHtmlString);
+	ClassDB::bind_method(D_METHOD("sendIpcMessage", "message_json"), &KiriePlugin::sendIpcMessage);
+	ClassDB::bind_method(D_METHOD("sendText", "message"), &KiriePlugin::sendText);
+	ClassDB::bind_method(D_METHOD("sendBinary", "bytes"), &KiriePlugin::sendBinary);
+	ClassDB::bind_method(D_METHOD("sendData", "value"), &KiriePlugin::sendData);
+	ClassDB::bind_method(D_METHOD("getLaunchOption", "key"), &KiriePlugin::getLaunchOption);
+
 	ADD_SIGNAL(MethodInfo("webview_ready"));
 	ADD_SIGNAL(MethodInfo("text_received", PropertyInfo(Variant::STRING, "message")));
 	ADD_SIGNAL(MethodInfo("binary_received", PropertyInfo(Variant::PACKED_BYTE_ARRAY, "bytes")));
 	ADD_SIGNAL(MethodInfo("data_received", PropertyInfo(Variant::NIL, "value", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NIL_IS_VARIANT)));
 	ADD_SIGNAL(MethodInfo("ipc_error", PropertyInfo(Variant::STRING, "error")));
-}
-
-Variant KiriePlugin::callp(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
-	r_error.error = Callable::CallError::CALL_OK;
-
-	if (p_method == StringName("createWebView")) {
-		if (!require_arg_count(r_error, p_argcount, 1)) {
-			return Variant();
-		}
-
-		createWebView(String(*p_args[0]));
-		return Variant();
-	}
-
-	if (p_method == StringName("registerCallbacks")) {
-		if (!require_arg_count(r_error, p_argcount, 5)) {
-			return Variant();
-		}
-
-		registerCallbacks(Callable(*p_args[0]), Callable(*p_args[1]), Callable(*p_args[2]), Callable(*p_args[3]), Callable(*p_args[4]));
-		return Variant();
-	}
-
-	if (p_method == StringName("destroyWebView")) {
-		if (!require_arg_count(r_error, p_argcount, 0)) {
-			return Variant();
-		}
-
-		destroyWebView();
-		return Variant();
-	}
-
-	if (p_method == StringName("loadUrl")) {
-		if (!require_arg_count(r_error, p_argcount, 1)) {
-			return Variant();
-		}
-
-		loadUrl(String(*p_args[0]));
-		return Variant();
-	}
-
-	if (p_method == StringName("loadHtmlString")) {
-		if (!require_arg_count(r_error, p_argcount, 2)) {
-			return Variant();
-		}
-
-		loadHtmlString(String(*p_args[0]), String(*p_args[1]));
-		return Variant();
-	}
-
-	if (p_method == StringName("sendIpcMessage")) {
-		if (!require_arg_count(r_error, p_argcount, 1)) {
-			return Variant();
-		}
-
-		sendIpcMessage(String(*p_args[0]));
-		return Variant();
-	}
-
-	if (p_method == StringName("sendText")) {
-		if (!require_arg_count(r_error, p_argcount, 1)) {
-			return Variant();
-		}
-
-		sendText(String(*p_args[0]));
-		return Variant();
-	}
-
-	if (p_method == StringName("sendBinary")) {
-		if (!require_arg_count(r_error, p_argcount, 1)) {
-			return Variant();
-		}
-
-		sendBinary(PackedByteArray(*p_args[0]));
-		return Variant();
-	}
-
-	if (p_method == StringName("sendData")) {
-		if (!require_arg_count(r_error, p_argcount, 1)) {
-			return Variant();
-		}
-
-		sendData(Variant(*p_args[0]));
-		return Variant();
-	}
-
-	if (p_method == StringName("getLaunchOption")) {
-		if (!require_arg_count(r_error, p_argcount, 1)) {
-			return Variant();
-		}
-
-		return getLaunchOption(String(*p_args[0]));
-	}
-
-	return Object::callp(p_method, p_args, p_argcount, r_error);
 }
 
 KiriePlugin::KiriePlugin() {
@@ -445,7 +296,7 @@ KiriePlugin::KiriePlugin() {
 		queue:main_queue
 		usingBlock:^(__unused NSNotification *notification) {
 			if (singleton) {
-				call_callback(singleton->webview_ready_callback);
+				singleton->emit_signal(StringName("webview_ready"));
 			}
 		}];
 
@@ -454,7 +305,7 @@ KiriePlugin::KiriePlugin() {
 		queue:main_queue
 		usingBlock:^(NSNotification *notification) {
 			if (singleton) {
-				call_callback(singleton->ipc_message_received_callback, to_godot_string(notification.object));
+				singleton->emit_signal(StringName("text_received"), to_godot_string(notification.object));
 			}
 		}];
 
@@ -463,7 +314,7 @@ KiriePlugin::KiriePlugin() {
 		queue:main_queue
 		usingBlock:^(NSNotification *notification) {
 			if (singleton) {
-				call_callback(singleton->text_received_callback, to_godot_string(notification.object));
+				singleton->emit_signal(StringName("text_received"), to_godot_string(notification.object));
 			}
 		}];
 
@@ -472,7 +323,7 @@ KiriePlugin::KiriePlugin() {
 		queue:main_queue
 		usingBlock:^(NSNotification *notification) {
 			if (singleton) {
-				call_callback(singleton->binary_received_callback, to_godot_bytes(notification.object));
+				singleton->emit_signal(StringName("binary_received"), to_godot_bytes(notification.object));
 			}
 		}];
 
@@ -481,7 +332,7 @@ KiriePlugin::KiriePlugin() {
 		queue:main_queue
 		usingBlock:^(NSNotification *notification) {
 			if (singleton) {
-				call_callback(singleton->data_received_callback, to_godot_variant(notification.object));
+				singleton->emit_signal(StringName("data_received"), to_godot_variant(notification.object));
 			}
 		}];
 
@@ -490,7 +341,7 @@ KiriePlugin::KiriePlugin() {
 		queue:main_queue
 		usingBlock:^(NSNotification *notification) {
 			if (singleton) {
-				call_callback(singleton->ipc_error_callback, to_godot_string(notification.object));
+				singleton->emit_signal(StringName("ipc_error"), to_godot_string(notification.object));
 			}
 		}];
 }

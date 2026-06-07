@@ -17,12 +17,12 @@ deferred until the IPC model is proven. The current `@gd-kirie/ipc` package is
 intentionally only a browser-side transport wrapper on top of the raw native
 bridge. Eventa adapters live above Kirie and use that low-level text transport.
 
-The Android IPC experiment keeps Kirie core byte-oriented and CBOR-based while
+The mobile IPC experiment keeps Kirie core byte-oriented and CBOR-based while
 preserving separate text, binary, and data lanes. Higher-level protocols,
-including Eventa adapters, remain above Kirie. iOS has a native CBOR
-serialization test target for the same lane payload contract, but its WebView
-transport still uses the previous text-oriented native path and has not yet
-been migrated to binary CBOR lanes.
+including Eventa adapters, remain above Kirie. Android carries CBOR packets
+through AndroidX WebKit ArrayBuffer message channels. iOS carries CBOR packets
+as base64 strings through WKWebView script messages and keeps native
+serialization coverage for the same lane payload contract.
 
 ## Current Godot API direction
 
@@ -55,8 +55,7 @@ without duplicating native lifecycle logic.
 The C# `KirieClient` wrapper follows the same low-level surface and forwards to
 the same platform singleton. Its public API should feel idiomatic to .NET users:
 methods use C# naming, and Kirie signals are exposed as C# events. Internal
-Godot `Callable` usage exists only to connect native singleton signals and iOS
-callbacks.
+Godot `Callable` usage exists only to connect native singleton signals.
 
 Current signals should also stay narrow:
 
