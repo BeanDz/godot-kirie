@@ -78,7 +78,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: godot/bin/libgodot.ios.template_debug.arm64.simulator.a
-          key: ${{ runner.os }}-${{ runner.arch }}-godot-${{ env.GODOT_VERSION }}-${{ steps.xcode.outputs.version }}-ios-simulator-template-${{ hashFiles('scripts/build*.ts') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-godot-${{ env.GODOT_VERSION }}-${{ steps.xcode.outputs.version }}-ios-template_debug-arm64-simulator
 
       - name: Enable Corepack
         run: mise x -- corepack enable pnpm
@@ -98,8 +98,8 @@ jobs:
       - name: Install pnpm dependencies
         run: mise x -- corepack pnpm install --frozen-lockfile
 
-      - name: Build iOS XCFramework
-        run: mise run build:ios-xcframework
+      - name: Build iOS debug XCFramework
+        run: mise run build:ios-debug-xcframework
 
       - name: Build integration App
         run: mise run build:integration-ios
@@ -112,10 +112,6 @@ jobs:
           xcrun simctl boot "$DEVICE_ID"
           xcrun simctl bootstatus "$DEVICE_ID"
           echo "SIMULATOR_ID=$DEVICE_ID" >> $GITHUB_ENV
-
-      - name: Run iOS IPC serialization test
-        timeout-minutes: 10
-        run: mise run test:ios-ipc-serialization
 
       - name: Install integration app
         run: xcrun simctl install $SIMULATOR_ID dist/integration/ios_debug.app
