@@ -153,19 +153,26 @@ Directory responsibilities are:
   CEF remains installed as `addons/godot_cef`.
 - `kirie.config.ts`: Kirie CLI configuration for coordinating Godot, Vite, and
   local build inputs.
+- `@gd-kirie/build`: publishable JavaScript API for build and export automation
+  that can be used without the Kirie CLI.
 
 Kirie does not own native platform project directories. Do not introduce
 Capacitor-style `ios/` or `android/` project trees into Kirie user projects.
 Native capabilities should be provided by Godot plugins.
 
 The planned Kirie CLI surface is intentionally small. The current implemented
-subset covers desktop development and local build inputs:
+subset covers desktop development, local build inputs, platform export, and
+mobile install-and-launch flows:
 
 ```sh
 kirie dev
 kirie build
 kirie build web
 kirie build dotnet
+kirie export android
+kirie export ios
+kirie run android
+kirie run ios
 ```
 
 The broader application workflow should keep these command semantics. The
@@ -215,13 +222,20 @@ In this model, `build` prepares local inputs, `export` packages those inputs,
 `run` runs or deploys the built inputs without exporting by default, and `dev`
 runs a hot-reload development session. `run --export` is the explicit form for
 exporting before running; users may also run `kirie export && kirie run` when
-they want the steps separated. `build`, `export`, and `run` default to
-`production` mode and should accept `--mode <mode>` for `development`,
-`staging`, or other user-defined modes once that option is implemented. `dev`
-should never run the production web build because it owns the Vite hot-reload
-server; desktop development can run without exporting, while mobile or
-deploy-style development may use a development export path. `dev` may still
-build the Godot C#/.NET project when one is configured.
+they want the steps separated. For exported mobile targets, `run` is an
+install-and-launch command: Android `run` installs the default APK before
+starting the app, and iOS simulator `run` installs the selected `.app` before
+launching it. `build`, `export`, and `run` default to `production` mode and
+should accept `--mode <mode>` for `development`, `staging`, or other
+user-defined modes once that option is implemented. `dev` should never run the
+production web build because it owns the Vite hot-reload server; desktop
+development can run without exporting, while mobile or deploy-style development
+may use a development export path. `dev` may still build the Godot C#/.NET
+project when one is configured.
+
+`@gd-kirie/build` owns explicit-input programmatic build and export primitives.
+Development sessions, mobile device selection, install, launch, launch-option
+injection, log streaming, and watch policy stay in `@gd-kirie/cli`.
 
 `kirie dev` starts a Vite development server, reads the actual resolved URL
 after Vite listens, launches Godot as a child process, and injects:
@@ -253,11 +267,12 @@ Godot C#/.NET project when one is configured or discovered. If no C# project is
 configured or discovered, the aggregate `kirie build` command may skip the
 `.NET` step; if a C# project is present, C# build failure must fail the command.
 
-`kirie export` and `kirie run` remain future work. `kirie export` should mean a
-complete platform export workflow: build local inputs first, then call Godot's
-export flow for the selected platform or preset. `kirie run` should build local
-inputs first, then directly run the scene or deploy the built outputs by
-default. It should only run an export workflow when the user passes
+`kirie export` means a complete platform export workflow: build local inputs
+first, then call Godot's export flow for the selected platform or preset.
+`kirie run` should build local inputs first, then directly run the scene or
+deploy the built outputs by default. For Android exports, deploy means
+installing the default `kirie export android` output before launching the Godot
+activity. It should only run an export workflow when the user passes
 `--export`. Neither command should silently create or repair project
 configuration.
 
@@ -323,20 +338,17 @@ instead of opening a browser. `--base`, `--outDir`, and Vite's own `--config`
 are also not part of the `kirie dev` surface because Kirie owns those values
 through `kirie.config.ts` and the app layout.
 
-The current CLI plan does not implement:
+The current CLI plan keeps these outside the application workflow:
 
 - `kirie create`
-- `kirie export`
-- mobile dev targets
 - BrowserWindow APIs
 
-Future mobile development targets should use one platform command with unified
-device selection, for example `kirie dev ios --device <selector>` and
+Mobile development targets should use one platform command with unified device
+selection, for example `kirie dev ios --device <selector>` and
 `kirie dev android --device <selector>`. The user-facing API should not split
 iOS simulator and iOS device into separate target names. Kirie may still use
 different launch backends internally for simulators, real devices, Android
-emulators, and Android devices. Mobile development targets are explicitly out
-of scope for the current CLI plan.
+emulators, and Android devices.
 
 ## Packaged web resource loading
 

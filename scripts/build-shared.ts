@@ -3,39 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { execa } from "execa";
-import { parse as parseIni } from "ini";
 
 export const rootDir = process.cwd();
+export const scriptsDir = path.join(rootDir, "scripts");
 export const distDir = "dist";
 export const integrationProjectDir = "tests/integration";
 export const integrationDistDir = "dist/integration";
 export const godotSourceRoot = path.join(rootDir, "godot");
 
 interface AndroidDebugExportOptions {
-  apkPath: string;
   projectDir: string;
   userArgs?: string[];
-}
-
-export function readExportPresetOption(
-  projectDir: string,
-  presetName: "Android" | "iOS",
-  optionName: string,
-): string {
-  const exportPresetsPath = `${projectDir}/export_presets.cfg`;
-  const config = parseIni(fs.readFileSync(exportPresetsPath, "utf8")) as {
-    preset: Record<string, { name: string; options: Record<string, string> }>;
-  };
-
-  for (const preset of Object.values(config.preset)) {
-    if (preset.name !== presetName) {
-      continue;
-    }
-
-    return preset.options[optionName];
-  }
-
-  throw new Error(`Export preset not found: ${presetName} in ${exportPresetsPath}`);
 }
 
 export async function buildWebPackage(filter: string): Promise<void> {
@@ -45,30 +23,25 @@ export async function buildWebPackage(filter: string): Promise<void> {
   });
 }
 
-export async function exportAndroidDebug(options: AndroidDebugExportOptions): Promise<void> {
-  fs.mkdirSync(path.dirname(options.apkPath), { recursive: true });
-
-  const godotArgs = [
-    "x",
-    "--",
-    "godot",
-    "--headless",
-    "--path",
-    options.projectDir,
-    "--install-android-build-template",
-    "--export-debug",
-    "Android",
-    `../../${options.apkPath}`,
-  ];
-
-  if (options.userArgs && options.userArgs.length > 0) {
-    godotArgs.push("--", ...options.userArgs);
-  }
-
-  await execa("mise", godotArgs, {
+export async function runKirieCli(args: string[]): Promise<void> {
+  await execa(process.execPath, kirieCliArgs(args), {
     cwd: rootDir,
     stdio: "inherit",
   });
+}
+
+export function kirieCliArgs(args: string[]): string[] {
+  return [path.join(rootDir, "packages/cli/src/cli.ts"), ...args];
+}
+
+export async function exportAndroidDebug(options: AndroidDebugExportOptions): Promise<void> {
+  const args = ["export", "android", "--project", path.resolve(rootDir, options.projectDir)];
+
+  if (options.userArgs && options.userArgs.length > 0) {
+    args.push("--", ...options.userArgs);
+  }
+
+  await runKirieCli(args);
 }
 
 function findSimulatorLibgodot(dirPath: string): string | undefined {
@@ -133,24 +106,14 @@ export async function exportIosSimulatorApp(projectDir: string, appPath: string)
   fs.mkdirSync(xcodeExportDir, { recursive: true });
 
   console.log("Exporting Xcode project...");
-  await execa(
-    "mise",
-    [
-      "x",
-      "--",
-      "godot",
-      "--headless",
-      "--path",
-      projectDir,
-      "--export-debug",
-      "iOS",
-      `../../${xcodeExportDir}/${exportName}.xcodeproj`,
-    ],
-    {
-      cwd: rootDir,
-      stdio: "inherit",
-    },
-  );
+  await runKirieCli([
+    "export",
+    "ios",
+    "--project",
+    path.resolve(rootDir, projectDir),
+    "--output",
+    path.resolve(rootDir, `${xcodeExportDir}/${exportName}.xcodeproj`),
+  ]);
 
   const simulatorLibgodot = findSimulatorLibgodot(xcodeExportDir);
   if (!simulatorLibgodot) {
