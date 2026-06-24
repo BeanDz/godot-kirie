@@ -1,18 +1,29 @@
 import path from "node:path";
-import { readExportPresetOption } from "@gd-kirie/build";
+import { readExportPresetValue } from "@gd-kirie/build";
 import { execa } from "execa";
 
-import { loadKirieConfig } from "./config.ts";
+import { loadKirieConfig, type ResolvedKirieConfig } from "./config.ts";
 import { resolveExportOutputPath } from "./export.ts";
 
-interface LaunchOptions {
-  [key: string]: string;
+export interface KirieDevLaunchOptions {
+  "kirie-dev": "1";
+  "kirie-web-url": string;
 }
 
-interface RunAndroidOptions {
+export type LaunchOptions = KirieDevLaunchOptions | Record<string, string>;
+
+export function createKirieDevLaunchOptions(webUrl: string): KirieDevLaunchOptions {
+  return {
+    "kirie-dev": "1",
+    "kirie-web-url": webUrl,
+  };
+}
+
+export interface RunAndroidOptions {
   attachLogcat?: boolean;
   clearData?: boolean;
   clearLogcat?: boolean;
+  config?: ResolvedKirieConfig;
   cwd?: string;
   device?: string;
   forceStop?: boolean;
@@ -21,9 +32,18 @@ interface RunAndroidOptions {
   preset?: string;
 }
 
-interface RunIosSimulatorOptions {
+export interface ReverseAndroidTcpOptions {
+  config?: ResolvedKirieConfig;
+  cwd?: string;
+  device?: string;
+  hostPort?: number;
+  port: number;
+}
+
+export interface RunIosSimulatorOptions {
   appPath?: string;
   bundleId?: string;
+  config?: ResolvedKirieConfig;
   cwd?: string;
   launchOptions?: LaunchOptions;
   simulatorId?: string;
@@ -31,18 +51,14 @@ interface RunIosSimulatorOptions {
 }
 
 export async function runAndroid(options: RunAndroidOptions = {}): Promise<void> {
-  const config = await loadKirieConfig({
-    command: "build",
-    cwd: options.cwd,
-  });
+  const config =
+    options.config ??
+    (await loadKirieConfig({
+      command: "build",
+      cwd: options.cwd,
+    }));
   const adbArgs = options.device ? ["-s", options.device] : [];
-  const packageName =
-    options.packageName ??
-    readExportPresetOption({
-      optionName: "package/unique_name",
-      presetName: options.preset ?? "Android",
-      projectDir: config.godot.project,
-    });
+  const packageName = options.packageName ?? readAndroidPackageName(config.godot.project, options);
 
   await execa(
     "adb",
@@ -122,21 +138,38 @@ export async function runAndroid(options: RunAndroidOptions = {}): Promise<void>
   });
 }
 
-export async function runIosSimulator(options: RunIosSimulatorOptions = {}): Promise<void> {
-  const config = await loadKirieConfig({
-    command: "build",
-    cwd: options.cwd,
+export async function reverseAndroidTcp(options: ReverseAndroidTcpOptions): Promise<void> {
+  const config =
+    options.config ??
+    (await loadKirieConfig({
+      command: "build",
+      cwd: options.cwd,
+    }));
+  const adbArgs = options.device ? ["-s", options.device] : [];
+  const hostPort = options.hostPort ?? options.port;
+
+  await execa("adb", [...adbArgs, "reverse", `tcp:${options.port}`, `tcp:${hostPort}`], {
+    cwd: config.cwd,
+    stdio: "inherit",
   });
+}
+
+export async function runIosSimulator(options: RunIosSimulatorOptions = {}): Promise<void> {
+  // TODO: Add a separate physical-device path. Capacitor's CLI uses the
+  // selected iOS target for xcodebuild, then deploys the built app with
+  // native-run instead of routing physical devices through simctl.
+  const config =
+    options.config ??
+    (await loadKirieConfig({
+      command: "build",
+      cwd: options.cwd,
+    }));
   const simulatorId = options.simulatorId ?? process.env.SIMULATOR_ID ?? "booted";
   const bundleId =
     options.bundleId ??
     (options.appPath
       ? await readIosAppBundleId(path.resolve(config.cwd, options.appPath))
-      : readExportPresetOption({
-          optionName: "application/bundle_identifier",
-          presetName: "iOS",
-          projectDir: config.godot.project,
-        }));
+      : readIosBundleId(config.godot.project));
 
   if (options.terminateExisting) {
     await execa("xcrun", ["simctl", "terminate", simulatorId, bundleId], {
@@ -160,12 +193,50 @@ export async function runIosSimulator(options: RunIosSimulatorOptions = {}): Pro
 
   await execa(
     "xcrun",
-    ["simctl", "launch", simulatorId, bundleId, ...iosLaunchOptionArgs(options.launchOptions)],
+    [
+      "simctl",
+      "launch",
+      "--console",
+      simulatorId,
+      bundleId,
+      ...iosLaunchOptionArgs(options.launchOptions),
+    ],
     {
       cwd: config.cwd,
       stdio: "inherit",
     },
   );
+}
+
+function readAndroidPackageName(
+  projectDir: string,
+  options: Pick<RunAndroidOptions, "preset">,
+): string {
+  const packageName = readExportPresetValue({
+    optionName: "package/unique_name",
+    presetName: options.preset ?? "Android",
+    projectDir,
+  });
+
+  if (typeof packageName === "string") {
+    return packageName;
+  }
+
+  throw new Error("Android export preset option package/unique_name must be a string.");
+}
+
+function readIosBundleId(projectDir: string): string {
+  const bundleId = readExportPresetValue({
+    optionName: "application/bundle_identifier",
+    presetName: "iOS",
+    projectDir,
+  });
+
+  if (typeof bundleId === "string") {
+    return bundleId;
+  }
+
+  throw new Error("iOS export preset option application/bundle_identifier must be a string.");
 }
 
 function androidLaunchOptionArgs(launchOptions: LaunchOptions | undefined): string[] {
